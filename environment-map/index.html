@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Environment Map</title>
+  <script src="../libs/three.js"></script>
+  <script src="../libs/dat.gui.js"></script>
+  <script src="../libs/OrbitControls.js"></script>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<script>
+
+  var renderer, scene, camera, cubeCamera, control, orbit, sphere;
+
+  function addControls (controlObject) {
+
+    var gui = new dat.GUI();
+    gui.add(controlObject, 'rotationSpeed', -0.1, 0.1);
+  }
+
+  // A cubeMap is a set of six textures that can be applied to the sides of a cube
+  function createCubeMap () {
+
+    var path = "../assets/textures/cubemap/saint_peters/";
+    var format = '.jpg';
+    var urls = [
+      path + 'posx' + format, path + 'negx' + format,
+      path + 'posy' + format, path + 'negy' + format,
+      path + 'posz' + format, path + 'negz' + format
+    ];
+
+    var textureCube = THREE.ImageUtils.loadTextureCube(urls, new THREE.CubeReflectionMapping());
+    return textureCube;
+  }
+
+  function render () {
+
+    // update our mouse controls
+    orbit.update();
+
+    // take the sphere out of the camera before updating our reflection texture
+    sphere.visible = false;
+    cubeCamera.updateCubeMap(renderer, scene);
+    sphere.visible = true;
+
+    renderer.render(scene, camera);
+    scene.getObjectByName('cube').rotation.x += control.rotationSpeed;
+    scene.getObjectByName('sphere').rotation.y += control.rotationSpeed;
+    scene.getObjectByName('cylinder').rotation.x += control.rotationSpeed;
+
+    requestAnimationFrame(render);
+  }
+
+  function Controls () {
+
+    this.rotationSpeed = 0.005;
+  }
+
+  function init() {
+
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 10000);
+
+    orbit = new THREE.OrbitControls(camera);
+
+    renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    var textureCube = createCubeMap();
+
+    var shader = THREE.ShaderLib["cube"];
+
+    // The material on our cube environment that we will be placed in
+    var material = new THREE.ShaderMaterial({
+      fragmentShader: shader.fragmentShader,
+      vertexShader: shader.vertexShader,
+      uniforms: shader.uniforms,
+      side: THREE.DoubleSide // Render the material on both the inside and outside of the box (since we are inside of it)
+    });
+
+    // The box that we are placed inside
+    var cubeEnvironment = new THREE.Mesh(new THREE.BoxGeometry(10000, 10000, 10000), material);
+    scene.add(cubeEnvironment);
+
+    // Used for reflection of the environment on meshes
+    cubeCamera = new THREE.CubeCamera(0.1, 20000, 256);
+    scene.add(cubeCamera);
+
+    // create our three meshes
+    var sphereGeometry = new THREE.SphereGeometry(4, 15, 15);
+    var boxGeometry = new THREE.BoxGeometry(5, 5, 5);
+    var cylinderGeometry = new THREE.CylinderGeometry(2, 4, 10, 20, 20, false);
+
+    var dynamicEnvMaterial = new THREE.MeshBasicMaterial({
+      envMap: cubeCamera.renderTarget // The environment cube texture that gets generated (including meshes in the environment)
+    });
+
+    var envMaterial = new THREE.MeshBasicMaterial({
+      envMap: textureCube // The environment cube texture that gets generated.
+    });
+
+    // use the dynamic cube camera texture so that we can see the reflection
+    // of the other meshes on the sphere
+    sphere = new THREE.Mesh(sphereGeometry, dynamicEnvMaterial);
+    sphere.name = 'sphere'
+    scene.add(sphere);
+
+    var cylinder = new THREE.Mesh(cylinderGeometry, envMaterial);
+    cylinder.name = 'cylinder';
+    scene.add(cylinder);
+    cylinder.position.set(10, 0, 0);
+
+    var cube = new THREE.Mesh(boxGeometry, envMaterial);
+    cube.name = 'cube';
+    scene.add(cube);
+    cube.position.set(-10, 0, 0);
+
+    camera.position.x = 0;
+    camera.position.y = 5;
+    camera.position.z = 35;
+    camera.lookAt(scene.position);
+
+    document.body.appendChild(renderer.domElement);
+
+    control = new Controls()
+    addControls(control);
+
+    render();
+  }
+
+  window.onload = init;
+
+</script>
+<body>
+</body>
+</html>

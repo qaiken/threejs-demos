@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+  <title>Sprite Particles</title>
+  <script type="text/javascript" src="../libs/three.js"></script>
+  <script type="text/javascript" src="../libs/stats.js"></script>
+  <script type="text/javascript" src="../libs/dat.gui.js"></script>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+
+<div id="stats-output">
+</div>
+<div id="webGL-output">
+</div>
+
+<script type="text/javascript">
+
+  function init() {
+
+    var stats = initStats();
+    var scene = new THREE.Scene();
+
+    var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.x = 50;
+    camera.position.y = 50;
+    camera.position.z = 50;
+    camera.lookAt(new THREE.Vector3(0, 0, 0))
+
+    var webGLRenderer = new THREE.WebGLRenderer();
+    webGLRenderer.setSize(window.innerWidth, window.innerHeight);
+    document.getElementById("webGL-output").appendChild(webGLRenderer.domElement);
+
+    var step = 0;
+    var group;
+
+    function getRandom (set) {
+
+      return set[Math.floor(Math.random() * set.length)];
+    }
+
+    function createSprites (range, size) {
+
+      group = new THREE.Object3D();
+      var opacities = [0.4, 0.5, 0.6]
+      var sizes = [2, 5, 6, 8, 10, 11, 12, 15]
+      for (var i = 0; i < size; i++) {
+        group.add(createSprite(getRandom(sizes), false, getRandom(opacities), 0xffffff, i % 12, i % 8, range));
+      }
+      group.name = 'links'
+      scene.add(group);
+    }
+
+    function getTexture() {
+
+      var texture = new THREE.ImageUtils.loadTexture("../assets/textures/particles/zelda-sprite-sheet.png");
+      return texture;
+    }
+
+    function createSprite(size, transparent, opacity, color, spriteNumberX, spriteNumberY, range) {
+
+      var spriteMaterial = new THREE.SpriteMaterial({
+        opacity: opacity,
+        color: color,
+        transparent: transparent,
+        map: getTexture()
+      });
+
+      // Sprite Map has 8 rows with 12 columns
+      spriteMaterial.map.offset = new THREE.Vector2(1/12 * spriteNumberX, 1/8 * spriteNumberY);
+      spriteMaterial.map.repeat = new THREE.Vector2(1/12, 1/8);
+
+      var sprite = new THREE.Sprite(spriteMaterial);
+      sprite.scale.set(size, size, size);
+      sprite.position.set(Math.random() * range - range / 2, Math.random() * range - range / 2, Math.random() * range - range / 2);
+
+      return sprite;
+    }
+
+    function render() {
+
+      stats.update();
+
+      if (controls.rotateSystem) {
+        step += 0.005;
+        group.rotation.y = step;
+        group.rotation.x = step;
+      }
+
+      requestAnimationFrame(render);
+      webGLRenderer.render(scene, camera);
+    }
+
+    function initStats() {
+
+      var stats = new Stats();
+      stats.setMode(0);
+
+      stats.domElement.style.position = 'absolute';
+      stats.domElement.style.left = '0px';
+      stats.domElement.style.top = '0px';
+
+      document.getElementById("stats-output").appendChild(stats.domElement);
+
+      return stats;
+    }
+
+    var controls = new function () {
+
+      this.range = 250;
+      this.size = 500;
+      this.rotateSystem = true;
+
+      this.redraw = function () {
+
+        var links = scene.getObjectByName('links');
+        if (links) {
+          scene.remove(links);
+        }
+
+        createSprites(controls.range, controls.size);
+      };
+    };
+
+    var gui = new dat.GUI();
+    gui.add(controls, 'range', 200, 750).onChange(controls.redraw);
+    gui.add(controls, 'size', 100, 750).onChange(controls.redraw);
+    gui.add(controls, 'rotateSystem').onChange(controls.redraw);
+
+    controls.redraw();
+    render();
+  }
+
+  window.onload = init;
+</script>
+</body>
+</html>

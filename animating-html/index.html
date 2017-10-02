@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Animating HTML</title>
+  <script src="../libs-new/three.js"></script>
+  <script src="../libs-new/dat.gui.min.js"></script>
+  <script src="../libs-new/stats.min.js"></script>
+  <script src="../libs-new/CSS3DRenderer.js"></script>
+  <script src="../libs-new/OrbitControls.js"></script>
+  <script src="../libs-new/tween.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: black;
+    }
+    .dg.ac {
+      z-index: 1;
+    }
+  </style>
+</head>
+<script>
+
+var renderer, scene, camera, control, controls, stats, currentElements = [],
+newlyAddedElements = [], toBeRemovedElements = [], positionAndRotation = [],
+offscreen = new THREE.Vector3(1000, 0, 1000);
+
+function init () {
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+  // With this renderer, Three.js uses CSS3 3D transforms to render a scene
+  // instead of WebGL
+  renderer = new THREE.CSS3DRenderer();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.domElement.style.position = 'absolute';
+  renderer.domElement.style.top = 0;
+
+  camera.position.x = 1200;
+  camera.position.y = 1200;
+  camera.position.z = 1200;
+  camera.lookAt(scene.position);
+
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+  // auto-rotate our view of the world
+  // (simulate us floating around the camera while looking at it)
+  controls.autoRotate = true;
+
+  control = new function () {
+
+    this.toCube = function () {
+
+      updateStructure(new THREE.BoxGeometry(20, 14, 20, 5, 3, 5), 40);
+    };
+
+    this.toCylinder = function () {
+
+      updateStructure(new THREE.CylinderGeometry(12, 12, 27, 15, 7, true), 40);
+    };
+
+    this.toSphere = function () {
+
+      updateStructure(new THREE.SphereGeometry(17, 10, 10), 40);
+    };
+
+    this.toTorus = function () {
+
+      updateStructure(new THREE.TorusGeometry(20,10,8,10),25);
+    };
+  };
+
+  addStatsObject();
+  addControlGui(control);
+
+  // start out with a plane geometry
+  updateStructure(new THREE.PlaneGeometry(30, 30, 8, 8), 40);
+
+  document.body.appendChild(renderer.domElement);
+  render();
+}
+
+function createCSS3DObject (faceIdx) {
+
+  var div = document.createElement('div');
+  var img = document.createElement('img');
+
+  var nrString = ("000" + faceIdx * 4).substr(-3, 3);
+  img.src = '../assets/screens/WALL-E-' + nrString + ".jpg";
+  img.width = 140;
+
+  div.appendChild(img);
+  div.style.opacity = 0.8;
+
+  // Takes any HTML element and renders it through CSS3DRenderer
+  return new THREE.CSS3DObject(div);
+}
+
+function updateStructure (geometry) {
+
+  // get the position and rotation of where we need to move elements to
+  positionAndRotation = getPositionAndRotation(geometry);
+
+  var tweenIn = new TWEEN.Tween({opacity: 0})
+  // how far we're done with the tween [0, 1]
+  .to({opacity: 1.0}, 3000)
+  .easing(TWEEN.Easing.Sinusoidal.InOut)
+  .onUpdate(function () {
+
+    var opacity = this.opacity;
+
+    newlyAddedElements.forEach(function (cssObject) {
+
+      // fade the newly added elements in
+      cssObject.element.style.opacity = opacity;
+    });
+
+    currentElements.forEach(function (cssObject, i) {
+
+      // get the elements start position and target position
+      var currentPos = positionAndRotation[i].currentPos;
+      var targetPos = positionAndRotation[i].pos;
+
+      // also get the elements start rotation and end rotations
+      var currentRotation = positionAndRotation[i].currentRotation;
+      var targetRotation = new THREE.Euler();
+      targetRotation.setFromRotationMatrix(positionAndRotation[i].rot);
+
+      // use the tween to slowly move the elements around.
+      cssObject.position.x = currentPos.x + (targetPos.x - currentPos.x) * opacity;
+      cssObject.position.y = currentPos.y + (targetPos.y - currentPos.y) * opacity;
+      cssObject.position.z = currentPos.z + (targetPos.z - currentPos.z) * opacity;
+
+      cssObject.rotation.x = currentRotation.x + (targetRotation.x - currentRotation.x) * opacity;
+      cssObject.rotation.y = currentRotation.y + (targetRotation.y - currentRotation.y) * opacity;
+      cssObject.rotation.z = currentRotation.z + (targetRotation.z - currentRotation.z) * opacity;
+    });
+  });
+
+  // different shapes require a different amount of elements
+  newlyAddedElements = [];
+  toBeRemovedElements = [];
+
+  // for each position and rotation point in the geometry,
+  // set the current position and rotation for all elements
+  // (create new elements if we have to)
+  positionAndRotation.forEach(function (positionAndRotationInCheck, i) {
+
+    // just move an existing element
+    if (currentElements.length > i) {
+      var element = currentElements[i];
+      positionAndRotationInCheck.currentPos = element.position.clone();
+      positionAndRotationInCheck.currentRotation = element.rotation.clone();
+      return null
+    }
+
+    // create a new element, hide it and set it off-screen
+    var element = createCSS3DObject(i + 1);
+    element.element.style.opacity = 0;
+    element.position = offscreen.clone();
+
+    positionAndRotation[i].currentPos = element.position.clone();
+    positionAndRotation[i].currentRotation = element.rotation.clone();
+
+    currentElements.push(element);
+    newlyAddedElements.push(element);
+    scene.add(element);
+  })
+
+  var countToRemove = currentElements.length - positionAndRotation.length
+  for (var i = countToRemove; i > 0; --i) {
+    scene.remove(currentElements.pop());
+  }
+
+  // kick off the animation
+  tweenIn.start();
+}
+
+/**
+  * Returns the position and the rotation matrix that needs to be applied to
+  * move the object to its new position. To calculate this, we analyze
+  * the provided geometry, and use the faces to calculate the new
+  * rotation and the position.
+  * Returns an array of the follow data structures:
+  *
+  * {
+      * pos: THREE.Vector3(),
+      * rot: THREE.Matrix4()
+  * }
+  *
+**/
+function getPositionAndRotation (geometry) {
+
+  var result = [];
+
+  for (var faceIdx = 0; faceIdx < geometry.faces.length; faceIdx += 2) {
+    // get current triangular face and the next which both form a rectangle.
+    // a face contains 3 vertices, face + faceNext contain 6 vertices
+    var face = geometry.faces[faceIdx];
+    var faceNext = geometry.faces[faceIdx + 1];
+
+    // GET NEW POSITION
+
+    // calculate the position of where the elements need to go to
+    // by adding vertices together
+    // (vector addition of vectors pointing from the origin (0, 0, 0) to each vertex)
+    var newPosition = new THREE.Vector3()
+      .add( getCenterofFace(geometry, face) )
+      .add( getCenterofFace(geometry, faceNext) )
+      .multiplyScalar(8); // spread them out more
+
+    // GET NEW ROTATION
+
+    var out = new THREE.Vector3(0, 0, 1);
+
+    // we get the normal vectors from both of the triangles
+    // (the direction where the rectangle is facing)
+    // and use the average
+    var normal = new THREE.Vector3();
+    normal.addVectors(face.normal, faceNext.normal);
+    normal.divideScalar(2);
+
+    // We calculate the axis on which to rotate by
+    // selecting the cross of the vectors
+    // the cross product, a × b, is a vector that is perpendicular
+    // to both a and b and thus normal to the plane containing them
+    var axis = new THREE.Vector3();
+    axis.crossVectors(out, normal);
+
+    // based on the axis, in relation to our normal vector
+    // we can calculate the angle.
+    var angle = Math.atan2(axis.length(), out.dot(normal));
+    axis.normalize();
+
+    // now we can use matrix function to rotate the object so
+    // it is aligned with the normal from the face
+    var rotationToApply = new THREE.Matrix4();
+
+    // Sets this matrix as rotation transform around axis by theta radians
+    rotationToApply.makeRotationAxis(axis, angle);
+    result.push({pos: newPosition, rot: rotationToApply});
+  }
+
+  return result;
+}
+
+function getCenterofFace (object, face) {
+
+  var a = object.vertices[face.a];
+  var b = object.vertices[face.b];
+  var c = object.vertices[face.c];
+
+  var center = new THREE.Vector3();
+  center.add(a);
+  center.add(b);
+  center.add(c);
+
+  return center;
+}
+
+function addControlGui (controlObject) {
+
+  var gui = new dat.GUI();
+  gui.add(controlObject, "toCube");
+  gui.add(controlObject, "toSphere");
+  gui.add(controlObject, "toCylinder");
+  gui.add(controlObject, "toTorus");
+}
+
+function addStatsObject () {
+
+  stats = new Stats();
+  stats.setMode(0);
+
+  stats.domElement.style.position = 'absolute';
+  stats.domElement.style.left = '0px';
+  stats.domElement.style.top = '0px';
+
+  document.body.appendChild(stats.domElement);
+}
+
+function render () {
+
+  // needed to update this animation,
+  // which in turn will call the function supplied to onUpdate
+  TWEEN.update();
+
+  stats.update();
+  controls.update();
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(render);
+}
+
+/**
+  * Ensure the camera and the renderer are updated on resize.
+**/
+function handleResize () {
+
+  // Camera frustum aspect ratio
+  camera.aspect = window.innerWidth / window.innerHeight;
+
+  // Updates the camera projection matrix.
+  // Must be called after any change of parameters (like aspect)
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+window.onload = init;
+window.addEventListener('resize', handleResize);
+
+</script>
+<body>
+
+</body>
+
+</html>
